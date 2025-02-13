@@ -1,0 +1,17 @@
+{
+  "name": "solver-simple",
+  "module": "index.ts",
+  "type": "module",
+  "dependencies": {
+    "@perennial/sdk": "0.0.3-beta.5",
+    "hyperliquid": "^1.2.2",
+    "resilient-websocket": "^1.0.11",
+    "viem": "2.9.9"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

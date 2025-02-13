@@ -89,10 +89,10 @@ class PerennialMarketMaker {
   private async fetchMarketSnapshots(markets: SupportedMarket[]) {
     try {
       const snapshots = await this.sdkLong.markets.read.marketSnapshots({ markets })
-      console.log('Market snapshots:', JSON.stringify(snapshots, (_, value) =>
-        typeof value === 'bigint' ? value.toString() : value,
-        2
-      ));
+      // console.log('Market snapshots:', JSON.stringify(snapshots, (_, value) =>
+      //  typeof value === 'bigint' ? value.toString() : value,
+      //  2
+      // ));
       return snapshots
     } catch (error) {
       console.error('Error fetching market snapshots:', error)
@@ -109,49 +109,45 @@ class PerennialMarketMaker {
     ]
     this.pythDirectClient.getPriceFeed(priceIds, async (data) => {
       console.log('Pyth price update:', JSON.stringify(data, null, 2))
-    
+
       const oraclePrice = Number(Big18Math.fromFloatString(data[0].price.toString()))
-    
       const marketAddress = ChainMarkets[this.sdkLong.currentChainId]?.[SupportedMarket.cmsqETH]
+
       if (!marketAddress) {
         console.error(`Market address not found for chain ID ${this.sdkLong.currentChainId}`)
         return
       }
 
-      const marketSnapshot = await this.fetchMarketSnapshots([SupportedMarket.cmsqETH]);      
+      const marketSnapshot = await this.fetchMarketSnapshots([SupportedMarket.cmsqETH])
       if (!marketSnapshot) {
         console.error('Market snapshot retrieval failed')
         return
       }
 
-      console.log("Available markets:", Object.keys(marketSnapshot.market));
-      console.log("Requested market address:", marketAddress);
-    
       // Find the correct market key based on the marketAddress
       const marketKey = Object.keys(marketSnapshot.market).find(
         key => marketSnapshot.market[key as keyof typeof marketSnapshot.market]?.marketAddress?.toLowerCase() === marketAddress.toLowerCase()
-      ) as keyof typeof marketSnapshot.market | undefined;
-      
+      ) as keyof typeof marketSnapshot.market | undefined
+
       if (!marketKey) {
-        console.error(`Market address ${marketAddress} not found in snapshot`);
-        return;
+        console.error(`Market address ${marketAddress} not found in snapshot`)
+        return
       }
-      
-      // Now TypeScript will not complain because marketKey is explicitly typed
-      const marketData = marketSnapshot.market[marketKey];
-      
+
+      const marketData = marketSnapshot.market[marketKey]
       if (!marketData || !marketData.global) {
-        console.error("Market data or global exposure is missing for the resolved market key");
-        return;
+        console.error("Market data or global exposure is missing for the resolved market key")
+        return
       }
-      const skew = Number(Big18Math.fromFloatString(marketData.global.exposure.toString()));
-      const riskParams = marketData.riskParameter;
+
+      const skew = Number(Big18Math.fromFloatString(marketData.global.exposure.toString()))
+      const riskParams = marketData.riskParameter
       const scale = Number(Big18Math.fromFloatString(riskParams.makerFee.scale.toString()))
       const linearFee = Number(Big6Math.fromFloatString(riskParams.takerFee.linearFee.toString()))
       const proportionalFee = Number(Big6Math.fromFloatString(riskParams.takerFee.proportionalFee.toString()))
       const adiabaticFee = Number(Big6Math.fromFloatString(riskParams.takerFee.adiabaticFee.toString()))
       const maxDepth = 10
-    
+
       // Generate order book
       const solverBook = generateSolverBook(
         oraclePrice,
@@ -162,10 +158,14 @@ class PerennialMarketMaker {
         adiabaticFee,
         maxDepth
       )
-    
+
       console.log('Generated Solver Book:', JSON.stringify(solverBook, null, 2))
+
+      // Push solver book to WebSocket
+      this.pushSolverBook(SupportedMarket.cmsqETH, solverBook)
     }).catch(console.error)
 
+    /*
     await this.hyperliquid.connect()
     await this.hyperliquid.subscriptions.subscribeToL2Book(
       'ETH-PERP',
@@ -182,6 +182,7 @@ class PerennialMarketMaker {
         ])
       }
     )
+    */
 
     // Poll for price updates
     // setInterval(async () => {
@@ -195,6 +196,28 @@ class PerennialMarketMaker {
     //     },
     //   ])
     // }, 5000)
+  }
+
+  private pushSolverBook(market: SupportedMarket, solverBook: { long: any[], short: any[] }) {
+    const payload = {
+      type: 'quote',
+      quoteID: randomUUID(),
+      markets: {
+        [`${this.sdkLong.currentChainId}:${ChainMarkets[this.sdkLong.currentChainId]?.[market]}`]: {
+          bid: solverBook.long.map(entry => ({
+            price: entry.price,
+            amount: entry.quantity
+          })),
+          ask: solverBook.short.map(entry => ({
+            price: entry.price,
+            amount: entry.quantity
+          }))
+        }
+      }
+    }
+
+    console.log(`Pushing solver book for ${market} with quoteID ${payload.quoteID}`)
+    this.socket.send(payload)
   }
 
   pushBooks(

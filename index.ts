@@ -372,12 +372,15 @@ class PerennialMarketMaker {
   }
 }
 
+const port = process.env.PORT ? parseInt(process.env.PORT) : 8080
 Bun.serve({
-  port: process.env.PORT ? parseInt(process.env.PORT) : 8080,
+  port: port,
   fetch(req) {
     return new Response('Hello World')
   },
 })
+
+console.log(`Server listening on port ${port}`)
 
 const mm = await PerennialMarketMaker.create()
 mm.run()

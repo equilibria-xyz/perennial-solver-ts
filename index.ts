@@ -31,11 +31,14 @@ const SpreadBufferShort = Big6Math.fromFloatString('0.998')
 
 class PerennialMarketMaker {
   private pythDirectClient: PythPriceClient
+  private socketConnected = false
 
   static async create() {
     const socket = new ResilientWebSocket(WssUrl, {
       autoJsonify: true,
       autoConnect: true,
+      reconnectInterval: 5000, // Reconnect every 5 seconds
+      reconnectOnError: false
     })
 
     const walletClientLong = createWalletClient({
@@ -199,6 +202,11 @@ class PerennialMarketMaker {
   }
 
   private pushSolverBook(market: SupportedMarket, solverBook: { long: any[], short: any[] }) {
+    if (!this.socketConnected) {
+      console.error("WebSocket is not connected, skipping message send.")
+      return
+    }
+
     const payload = {
       type: 'quote',
       quoteID: randomUUID(),
@@ -216,8 +224,12 @@ class PerennialMarketMaker {
       }
     }
 
-    console.log(`Pushing solver book for ${market} with quoteID ${payload.quoteID}`)
-    this.socket.send(payload)
+    console.log(`Pushing solver book for ${market} with quoteID ${payload.quoteID}. Payload: ${JSON.stringify(payload)}`)
+    try {
+        this.socket.send(payload)
+    } catch (error) {
+        console.error("Failed to send solver book:", error)
+    }
   }
 
   pushBooks(
@@ -314,11 +326,17 @@ class PerennialMarketMaker {
     })
 
     this.socket.on(WebSocketEvent.CONNECTION, () => {
+      this.socketConnected = true
       console.log('WebSocket connection opened')
     })
 
-    this.socket.on(WebSocketEvent.CLOSE, () => {
-      console.log('WebSocket connection closed')
+    this.socket.on(WebSocketEvent.CLOSE, (error) => {
+      this.socketConnected = false
+      console.warn(`WebSocket connection closed. Code: ${error}`);
+    })
+
+    this.socket.on(WebSocketEvent.ERROR, (error) => {
+      console.error("WebSocket connection encountered an error:", error);
     })
   }
 

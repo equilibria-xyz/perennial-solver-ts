@@ -249,12 +249,6 @@ class PerennialMarketMaker {
     } catch (error) {
         console.error("Failed to send solver book 1:", error)
     }
-
-    try {
-      this.socket.send(JSON.stringify(payload))
-  } catch (error) {
-      console.error("Failed to send solver book 2:", error)
-  }
   }
 
   pushBooks(

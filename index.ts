@@ -108,7 +108,7 @@ class PerennialMarketMaker {
       '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' // ETH/USD
     ]
     this.pythDirectClient.getPriceFeed(priceIds, async (data) => {
-      console.log('Pyth price update:', JSON.stringify(data, null, 2))
+      // console.log('Pyth price update:', JSON.stringify(data, null, 2))
 
       const oraclePrice = Number(Big18Math.fromFloatString(data[0].price.toString()))
       const marketAddress = ChainMarkets[this.sdkLong.currentChainId]?.[SupportedMarket.cmsqETH]
@@ -159,7 +159,7 @@ class PerennialMarketMaker {
         maxDepth
       )
 
-      console.log('Generated Solver Book:', JSON.stringify(solverBook, null, 2))
+      // console.log('Generated Solver Book:', JSON.stringify(solverBook, null, 2))
 
       // Push solver book to WebSocket
       this.pushSolverBook(SupportedMarket.cmsqETH, solverBook)

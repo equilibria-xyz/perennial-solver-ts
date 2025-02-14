@@ -37,8 +37,9 @@ export interface OrderBook {
         (adiabaticFee - 2 * proportionalFee);
       const shortPrice = oraclePrice - shortSpread / depth;
   
-      solverBook.long.push({ price: longPrice, quantity: longQuantity });
-      solverBook.short.push({ price: shortPrice, quantity: shortQuantity });
+      // Ensure price and quantity are integers
+      solverBook.long.push({ price: Math.round(longPrice), quantity: Math.round(longQuantity) })
+      solverBook.short.push({ price: Math.round(shortPrice), quantity: Math.round(shortQuantity) })
     }
   
     return solverBook;

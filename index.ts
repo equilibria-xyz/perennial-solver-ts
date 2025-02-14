@@ -111,9 +111,8 @@ class PerennialMarketMaker {
       '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' // ETH/USD
     ]
     this.pythDirectClient.getPriceFeed(priceIds, async (data) => {
-      // console.log('Pyth price update:', JSON.stringify(data, null, 2))
-
-      const oraclePrice = Number(Big18Math.fromFloatString(data[0].price.toString()))
+      console.log('Pyth price update:', JSON.stringify(data, null, 2))
+      const oraclePrice = data[0].price
       const marketAddress = ChainMarkets[this.sdkLong.currentChainId]?.[SupportedMarket.cmsqETH]
 
       if (!marketAddress) {
@@ -143,14 +142,15 @@ class PerennialMarketMaker {
         return
       }
 
-      const skew = Number(Big18Math.fromFloatString(marketData.global.exposure.toString()))
+      const skew = Number(marketData.global.exposure)
       const riskParams = marketData.riskParameter
-      const scale = Number(Big18Math.fromFloatString(riskParams.makerFee.scale.toString()))
+      const scale = Number(riskParams.makerFee.scale)
       const linearFee = Number(Big6Math.fromFloatString(riskParams.takerFee.linearFee.toString()))
       const proportionalFee = Number(Big6Math.fromFloatString(riskParams.takerFee.proportionalFee.toString()))
       const adiabaticFee = Number(Big6Math.fromFloatString(riskParams.takerFee.adiabaticFee.toString()))
       const maxDepth = 10
 
+      console.log(`Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`)
       // Generate order book
       const solverBook = generateSolverBook(
         oraclePrice,
@@ -207,7 +207,6 @@ class PerennialMarketMaker {
       return
     }
 
-    /*
     const payload = {
       type: 'quote',
       quoteID: randomUUID(),
@@ -224,24 +223,6 @@ class PerennialMarketMaker {
         }
       }
     }
-    */
-
-    const payload = {
-      "type": "quote",
-      "quoteID": "c65e3969-838e-4e60-8608-24f9e34214f9",
-      "markets": {
-        "421614:0xfC51de1f1a4ddeE5AD50df492f0A642cF1894E73": {
-            "bid":  [{
-                         "amount": 313509100,
-                         "price": 72102298
-                    }],
-            "ask":  [{
-                         "amount": -36021500,
-                         "price": 78869889
-                    }]
-        }
-      }
-  }
 
     console.log(`Pushing solver book for ${market} with quoteID ${payload.quoteID}. Payload: ${JSON.stringify(payload)}`)
     try {

@@ -207,6 +207,7 @@ class PerennialMarketMaker {
       return
     }
 
+    /*
     const payload = {
       type: 'quote',
       quoteID: randomUUID(),
@@ -223,13 +224,37 @@ class PerennialMarketMaker {
         }
       }
     }
+    */
+
+    const payload = {
+      "type": "quote",
+      "quoteID": "c65e3969-838e-4e60-8608-24f9e34214f9",
+      "markets": {
+        "421614:0xfC51de1f1a4ddeE5AD50df492f0A642cF1894E73": {
+            "bid":  [{
+                         "amount": 313509100,
+                         "price": 72102298
+                    }],
+            "ask":  [{
+                         "amount": -36021500,
+                         "price": 78869889
+                    }]
+        }
+      }
+  }
 
     console.log(`Pushing solver book for ${market} with quoteID ${payload.quoteID}. Payload: ${JSON.stringify(payload)}`)
     try {
         this.socket.send(payload)
     } catch (error) {
-        console.error("Failed to send solver book:", error)
+        console.error("Failed to send solver book 1:", error)
     }
+
+    try {
+      this.socket.send(JSON.stringify(payload))
+  } catch (error) {
+      console.error("Failed to send solver book 2:", error)
+  }
   }
 
   pushBooks(

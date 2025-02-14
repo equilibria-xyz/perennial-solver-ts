@@ -376,7 +376,7 @@ const port = process.env.PORT ? parseInt(process.env.PORT) : 8080
 Bun.serve({
   port: port,
   fetch(req) {
-    return new Response('Hello World')
+    return new Response('Perennial Solver')
   },
 })
 

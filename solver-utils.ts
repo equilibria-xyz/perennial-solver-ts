@@ -38,8 +38,8 @@ export interface OrderBook {
       const shortPrice = oraclePrice - shortSpread / depth;
   
       // Ensure price and quantity are integers
-      solverBook.long.push({ price: Math.round(longPrice), quantity: Math.round(longQuantity) })
-      solverBook.short.push({ price: Math.round(shortPrice), quantity: Math.round(shortQuantity) })
+      solverBook.long.push({ price: Math.round(longPrice), quantity: Math.abs(Math.round(longQuantity)) });
+      solverBook.short.push({ price: Math.round(shortPrice), quantity: -Math.abs(Math.round(shortQuantity)) });
     }
   
     return solverBook;

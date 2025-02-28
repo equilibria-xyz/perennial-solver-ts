@@ -1,5 +1,5 @@
 {
-  "name": "solver-simple",
+  "name": "perennial-solver",
   "module": "index.ts",
   "type": "module",
   "dependencies": {

@@ -30,7 +30,7 @@ const DyDxUrl = 'https://indexer.dydx.trade/v4'
 const SpreadBufferLong = Big6Math.fromFloatString('1.002')
 const SpreadBufferShort = Big6Math.fromFloatString('0.998')
 
-const logger = new RateLimitedLogger(5000) // Logs at most once every 5 seconds
+const logger = new RateLimitedLogger(60000) // Logs at most once every 60 seconds
 
 class PerennialMarketMaker {
   private pythDirectClient: PythPriceClient

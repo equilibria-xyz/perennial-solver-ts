@@ -17,6 +17,7 @@ import { Hyperliquid, type L2Book } from 'hyperliquid'
 import { PythPriceClient } from './pyth-client'
 import { ETH_USD_PRICE_ID } from './constants'
 import { generateSolverBook } from './solver-utils'
+import { RateLimitedLogger } from './utils/logger'
 
 const RpcUrl = Bun.env.RPC_URL!
 const PriceStreamUrl = Bun.env.PYTH_URL!
@@ -28,6 +29,8 @@ const DyDxUrl = 'https://indexer.dydx.trade/v4'
 
 const SpreadBufferLong = Big6Math.fromFloatString('1.002')
 const SpreadBufferShort = Big6Math.fromFloatString('0.998')
+
+const logger = new RateLimitedLogger(5000) // Logs at most once every 5 seconds
 
 class PerennialMarketMaker {
   private pythDirectClient: PythPriceClient
@@ -92,13 +95,13 @@ class PerennialMarketMaker {
   private async fetchMarketSnapshots(markets: SupportedMarket[]) {
     try {
       const snapshots = await this.sdkLong.markets.read.marketSnapshots({ markets })
-      // console.log('Market snapshots:', JSON.stringify(snapshots, (_, value) =>
+      // logger.debug('Market snapshots:', JSON.stringify(snapshots, (_, value) =>
       //  typeof value === 'bigint' ? value.toString() : value,
       //  2
       // ));
       return snapshots
     } catch (error) {
-      console.error('Error fetching market snapshots:', error)
+      logger.error('Error fetching market snapshots:', error)
       return null
     }
   }
@@ -114,7 +117,7 @@ class PerennialMarketMaker {
     };
 
     this.pythDirectClient.getPriceFeed(priceIds, async (data) => {
-        console.debug(`Pyth price update: ${JSON.stringify(data, null, 2)}`);
+        logger.debug(`Pyth price update: ${JSON.stringify(data, null, 2)}`);
 
         for (const priceData of data) {
             const { price_id, price: oraclePrice } = priceData;
@@ -122,19 +125,19 @@ class PerennialMarketMaker {
             const formattedPriceId = `0x${price_id.toLowerCase()}`
             const marketKey = priceIdToMarket[formattedPriceId];
             if (!marketKey) {
-                console.error(`Unknown price_id received: ${price_id}`);
+              logger.error(`Unknown price_id received: ${price_id}`);
                 continue
             }
 
             const marketAddress = ChainMarkets[this.sdkLong.currentChainId]?.[marketKey];
             if (!marketAddress) {
-                console.error(`Market address not found for chain ID ${this.sdkLong.currentChainId} and market ${marketKey}`)
+                logger.error(`Market address not found for chain ID ${this.sdkLong.currentChainId} and market ${marketKey}`)
                 continue
             }
 
             const marketSnapshot = await this.fetchMarketSnapshots([marketKey]);
             if (!marketSnapshot) {
-                console.error(`Market snapshot retrieval failed for ${marketKey}`);
+                logger.error(`Market snapshot retrieval failed for ${marketKey}`);
                 continue;
             }
 
@@ -144,13 +147,13 @@ class PerennialMarketMaker {
             ) as keyof typeof marketSnapshot.market | undefined;
 
             if (!resolvedMarketKey) {
-                console.error(`Market address ${marketAddress} not found in snapshot for ${marketKey}`);
+                logger.error(`Market address ${marketAddress} not found in snapshot for ${marketKey}`);
                 continue;
             }
 
             const marketData = marketSnapshot.market[resolvedMarketKey];
             if (!marketData || !marketData.global) {
-                console.error(`Market data or global exposure is missing for ${marketKey}`);
+                logger.error(`Market data or global exposure is missing for ${marketKey}`);
                 continue;
             }
 
@@ -162,7 +165,7 @@ class PerennialMarketMaker {
             const adiabaticFee = Number(Big6Math.fromFloatString(riskParams.takerFee.adiabaticFee.toString()));
             const maxDepth = 10;
 
-            console.log(`Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`);
+            logger.debug(`Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`);
             
             // Generate order book
             const solverBook = generateSolverBook(
@@ -178,7 +181,7 @@ class PerennialMarketMaker {
             // Push solver book to WebSocket
             this.pushSolverBook(marketKey, solverBook);
         }
-    }).catch(console.error)
+    }).catch(logger.error)
 
 
     /*
@@ -216,7 +219,7 @@ class PerennialMarketMaker {
 
   private pushSolverBook(market: SupportedMarket, solverBook: { long: any[], short: any[] }) {
     if (!this.socketConnected) {
-      console.error("WebSocket is not connected, skipping message send.")
+      logger.error("WebSocket is not connected, skipping message send.")
       return
     }
 
@@ -237,11 +240,11 @@ class PerennialMarketMaker {
       }
     }
 
-    console.log(`Pushing solver book for ${market} with quoteID ${payload.quoteID}. Payload: ${JSON.stringify(payload)}`)
+    logger.debug(`Pushing solver book for ${market}: quoteID: ${payload.quoteID}. Payload: ${JSON.stringify(payload)}`)
     try {
         this.socket.send(payload)
     } catch (error) {
-        console.error("Failed to send solver book 1:", error)
+        logger.error("Failed to send solver book 1:", error)
     }
   }
 
@@ -273,8 +276,8 @@ class PerennialMarketMaker {
         >
       ),
     }
-    console.log(
-      `Pushing ${books.map(b => b.market).join(',')} books with quoteID ${
+    logger.debug(
+      `Pushing ${books.map(b => b.market).join(',')} books: with quoteID ${
         payload.quoteID
       }`
     )
@@ -328,11 +331,11 @@ class PerennialMarketMaker {
 
   listen() {
     this.socket.on(WebSocketEvent.PONG, () => {
-      console.log('Received pong')
+      logger.info('Received pong')
     })
 
     this.socket.on(WebSocketEvent.MESSAGE, data => {
-      console.log(`Received message: ${data}`)
+      logger.info(`Received message: ${data}`)
       if (data?.type === 'intent_execution_request') {
         this.executeIntent(data.intent, data.signature, data.transaction)
       }
@@ -340,16 +343,16 @@ class PerennialMarketMaker {
 
     this.socket.on(WebSocketEvent.CONNECTION, () => {
       this.socketConnected = true
-      console.log('WebSocket connection opened')
+      logger.info('WebSocket connection opened')
     })
 
     this.socket.on(WebSocketEvent.CLOSE, (error) => {
       this.socketConnected = false
-      console.warn(`WebSocket connection closed. Code: ${error}`);
+      logger.warn(`WebSocket connection closed. Code: ${error}`);
     })
 
     this.socket.on(WebSocketEvent.ERROR, (error) => {
-      console.error("WebSocket connection encountered an error:", error);
+      logger.error("WebSocket connection encountered an error:", error);
     })
   }
 
@@ -372,7 +375,7 @@ class PerennialMarketMaker {
         chain: arbitrumSepolia as any,
       })
 
-      console.log('Sent transaction', tx)
+      logger.info('Sent transaction', tx)
 
       this.socket.send({
         type: 'intent_execution_response',
@@ -381,7 +384,7 @@ class PerennialMarketMaker {
         status: 'success',
       })
     } catch (e) {
-      console.error(
+      logger.error(
         'Error executing intent',
         parseViemContractCustomError(e),
         String(e)
@@ -411,7 +414,7 @@ Bun.serve({
   },
 })
 
-console.log(`Server listening on port ${port}`)
+logger.info(`Server listening on port ${port}`)
 
 const mm = await PerennialMarketMaker.create()
 mm.run()

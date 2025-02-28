@@ -1,5 +1,6 @@
 // src/pyth-client.ts
 import { EventEmitter } from 'events'
+import { ETH_USD_PRICE_ID, BTC_USD_PRICE_ID } from './constants'
 
 export interface PriceData {
   price_id: string
@@ -117,9 +118,7 @@ export class PythPriceClient extends EventEmitter {
 
 // Example usage:
 async function main() {
-  const priceIds = [
-    '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' // ETH/USD
-  ]
+  const priceIds = [BTC_USD_PRICE_ID, ETH_USD_PRICE_ID]
 
   const client = new PythPriceClient()
   await client.getPriceFeed(priceIds, (data) => {

@@ -15,7 +15,7 @@ import { randomUUID } from 'crypto'
 import ResilientWebSocket, { WebSocketEvent } from 'resilient-websocket'
 import { Hyperliquid, type L2Book } from 'hyperliquid'
 import { PythPriceClient } from './pyth-client'
-import type { PriceData } from './pyth-client'
+import { ETH_USD_PRICE_ID, BTC_USD_PRICE_ID } from './constants'
 import { generateSolverBook } from './solver-utils'
 
 const RpcUrl = Bun.env.RPC_URL!
@@ -104,69 +104,82 @@ class PerennialMarketMaker {
   }
 
   async run() {
-    this.listen()
+    this.listen();
 
     // Start Pyth direct price feed
-    const priceIds = [
-      '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace' // ETH/USD
-    ]
+    const priceIds = [BTC_USD_PRICE_ID, ETH_USD_PRICE_ID]
+
+    const priceIdToMarket: Record<string, SupportedMarket> = {
+      BTC_USD_PRICE_ID: SupportedMarket.btc,
+      ETH_USD_PRICE_ID: SupportedMarket.eth,
+    };
+
     this.pythDirectClient.getPriceFeed(priceIds, async (data) => {
-      console.log('Pyth price update:', JSON.stringify(data, null, 2))
-      const oraclePrice = data[0].price
-      const marketAddress = ChainMarkets[this.sdkLong.currentChainId]?.[SupportedMarket.cmsqETH]
+        console.debug(`Pyth price update: ${JSON.stringify(data, null, 2)}`);
 
-      if (!marketAddress) {
-        console.error(`Market address not found for chain ID ${this.sdkLong.currentChainId}`)
-        return
-      }
+        for (const priceData of data) {
+            const { price_id, price: oraclePrice } = priceData;
 
-      const marketSnapshot = await this.fetchMarketSnapshots([SupportedMarket.cmsqETH])
-      if (!marketSnapshot) {
-        console.error('Market snapshot retrieval failed')
-        return
-      }
+            const marketKey = priceIdToMarket[price_id];
+            if (!marketKey) {
+                console.error(`Unknown price_id received: ${price_id}`);
+                continue
+            }
 
-      // Find the correct market key based on the marketAddress
-      const marketKey = Object.keys(marketSnapshot.market).find(
-        key => marketSnapshot.market[key as keyof typeof marketSnapshot.market]?.marketAddress?.toLowerCase() === marketAddress.toLowerCase()
-      ) as keyof typeof marketSnapshot.market | undefined
+            const marketAddress = ChainMarkets[this.sdkLong.currentChainId]?.[marketKey];
+            if (!marketAddress) {
+                console.error(`Market address not found for chain ID ${this.sdkLong.currentChainId} and market ${marketKey}`)
+                continue
+            }
 
-      if (!marketKey) {
-        console.error(`Market address ${marketAddress} not found in snapshot`)
-        return
-      }
+            const marketSnapshot = await this.fetchMarketSnapshots([marketKey]);
+            if (!marketSnapshot) {
+                console.error(`Market snapshot retrieval failed for ${marketKey}`);
+                continue;
+            }
 
-      const marketData = marketSnapshot.market[marketKey]
-      if (!marketData || !marketData.global) {
-        console.error("Market data or global exposure is missing for the resolved market key")
-        return
-      }
+            // Find the correct market key based on the marketAddress
+            const resolvedMarketKey = Object.keys(marketSnapshot.market).find(
+                key => marketSnapshot.market[key as keyof typeof marketSnapshot.market]?.marketAddress?.toLowerCase() === marketAddress.toLowerCase()
+            ) as keyof typeof marketSnapshot.market | undefined;
 
-      const skew = Number(marketData.global.exposure)
-      const riskParams = marketData.riskParameter
-      const scale = Number(riskParams.makerFee.scale)
-      const linearFee = Number(Big6Math.fromFloatString(riskParams.takerFee.linearFee.toString()))
-      const proportionalFee = Number(Big6Math.fromFloatString(riskParams.takerFee.proportionalFee.toString()))
-      const adiabaticFee = Number(Big6Math.fromFloatString(riskParams.takerFee.adiabaticFee.toString()))
-      const maxDepth = 10
+            if (!resolvedMarketKey) {
+                console.error(`Market address ${marketAddress} not found in snapshot for ${marketKey}`);
+                continue;
+            }
 
-      console.log(`Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`)
-      // Generate order book
-      const solverBook = generateSolverBook(
-        oraclePrice,
-        skew,
-        scale,
-        linearFee,
-        proportionalFee,
-        adiabaticFee,
-        maxDepth
-      )
+            const marketData = marketSnapshot.market[resolvedMarketKey];
+            if (!marketData || !marketData.global) {
+                console.error(`Market data or global exposure is missing for ${marketKey}`);
+                continue;
+            }
 
-      // console.log('Generated Solver Book:', JSON.stringify(solverBook, null, 2))
+            const skew = Number(marketData.global.exposure);
+            const riskParams = marketData.riskParameter;
+            const scale = Number(riskParams.makerFee.scale);
+            const linearFee = Number(Big6Math.fromFloatString(riskParams.takerFee.linearFee.toString()));
+            const proportionalFee = Number(Big6Math.fromFloatString(riskParams.takerFee.proportionalFee.toString()));
+            const adiabaticFee = Number(Big6Math.fromFloatString(riskParams.takerFee.adiabaticFee.toString()));
+            const maxDepth = 10;
 
-      // Push solver book to WebSocket
-      this.pushSolverBook(SupportedMarket.cmsqETH, solverBook)
+            console.log(`Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`);
+            
+            // Generate order book
+            const solverBook = generateSolverBook(
+                oraclePrice,
+                skew,
+                scale,
+                linearFee,
+                proportionalFee,
+                adiabaticFee,
+                maxDepth
+            );
+
+            // Push solver book to WebSocket
+            this.pushSolverBook(marketKey, solverBook);
+        }
     }).catch(console.error)
+
 
     /*
     await this.hyperliquid.connect()
@@ -319,7 +332,7 @@ class PerennialMarketMaker {
     })
 
     this.socket.on(WebSocketEvent.MESSAGE, data => {
-      console.log('Received message', data)
+      console.log(`Received message: ${data}`)
       if (data?.type === 'intent_execution_request') {
         this.executeIntent(data.intent, data.signature, data.transaction)
       }

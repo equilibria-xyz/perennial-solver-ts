@@ -15,7 +15,7 @@ import { randomUUID } from 'crypto'
 import ResilientWebSocket, { WebSocketEvent } from 'resilient-websocket'
 import { Hyperliquid, type L2Book } from 'hyperliquid'
 import { PythPriceClient } from './pyth-client'
-import { ETH_USD_PRICE_ID, BTC_USD_PRICE_ID } from './constants'
+import { ETH_USD_PRICE_ID } from './constants'
 import { generateSolverBook } from './solver-utils'
 
 const RpcUrl = Bun.env.RPC_URL!
@@ -107,11 +107,10 @@ class PerennialMarketMaker {
     this.listen();
 
     // Start Pyth direct price feed
-    const priceIds = [BTC_USD_PRICE_ID, ETH_USD_PRICE_ID]
+    const priceIds = [ETH_USD_PRICE_ID]
 
     const priceIdToMarket: Record<string, SupportedMarket> = {
-      BTC_USD_PRICE_ID: SupportedMarket.btc,
-      ETH_USD_PRICE_ID: SupportedMarket.eth,
+      [ETH_USD_PRICE_ID]: SupportedMarket.eth,
     };
 
     this.pythDirectClient.getPriceFeed(priceIds, async (data) => {
@@ -119,8 +118,9 @@ class PerennialMarketMaker {
 
         for (const priceData of data) {
             const { price_id, price: oraclePrice } = priceData;
-
-            const marketKey = priceIdToMarket[price_id];
+;
+            const formattedPriceId = `0x${price_id.toLowerCase()}`
+            const marketKey = priceIdToMarket[formattedPriceId];
             if (!marketKey) {
                 console.error(`Unknown price_id received: ${price_id}`);
                 continue

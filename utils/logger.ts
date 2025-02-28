@@ -1,3 +1,12 @@
+import pino from 'pino'
+
+export const logger = pino({
+    level: 'debug',
+    transport: {
+        target: 'pino-pretty',
+        options: { colorize: true }
+    }
+});
 
 export class RateLimitedLogger {
     private lastLogTimes: Map<string, number> = new Map();
@@ -24,38 +33,31 @@ export class RateLimitedLogger {
     }
 
 
-    log(message: string, ...optionalParams: any[]) {
-        const msg = this.buildMsg(message, true);
-        if (msg) {
-            console.log(msg, ...optionalParams);
-        }
-    }
-
     debug(message: string, ...optionalParams: any[]) {
         const msg = this.buildMsg(message, true);
         if (msg) {
-            console.debug(msg, ...optionalParams);
+            logger.debug(msg, ...optionalParams);
         }
     }
 
     info(message: string, ...optionalParams: any[]) {
         const msg = this.buildMsg(message, false);
         if (msg) {
-            console.info(msg, ...optionalParams);
+            logger.info(msg, ...optionalParams);
         }
     }
 
     warn(message: string, ...optionalParams: any[]) {
         const msg = this.buildMsg(message, false);
         if (msg) {
-            console.warn(msg, ...optionalParams);
+            logger.warn(msg, ...optionalParams);
         }
     }
 
     error(message: string, ...optionalParams: any[]) {
         const msg = this.buildMsg(message, false);
         if (msg) {
-            console.error(msg, ...optionalParams);
+            logger.error(msg, ...optionalParams);
         }
     }    
 }

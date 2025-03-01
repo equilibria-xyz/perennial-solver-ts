@@ -2,9 +2,14 @@ import pino from 'pino'
 
 export const logger = pino({
     level: 'debug',
-    transport: {
+    transport: process.env.NODE_ENV !== 'local' ? undefined : {
         target: 'pino-pretty',
         options: { colorize: true }
+    },
+    formatters: {
+        level(label) {
+            return { level: label };
+        }
     }
 });
 

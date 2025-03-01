@@ -5,7 +5,7 @@ import PerennialSdk, {
   ChainMarkets,
   HermesClient,
   Intent,
-  MarketMetadata,
+  PositionSide,
   parseViemContractCustomError,
   SupportedMarket,
 } from '@perennial/sdk'
@@ -35,6 +35,7 @@ const logger = new RateLimitedLogger(60000) // Logs at most once every 60 second
 class PerennialMarketMaker {
   private pythDirectClient: PythPriceClient
   private socketConnected = false
+  private pendingExecutions: Set<SupportedMarket> = new Set()
 
   static async create() {
     const socket = new ResilientWebSocket(WssUrl, {
@@ -95,10 +96,6 @@ class PerennialMarketMaker {
   private async fetchMarketSnapshots(markets: SupportedMarket[]) {
     try {
       const snapshots = await this.sdkLong.markets.read.marketSnapshots({ markets })
-      // logger.debug('Market snapshots:', JSON.stringify(snapshots, (_, value) =>
-      //  typeof value === 'bigint' ? value.toString() : value,
-      //  2
-      // ));
       return snapshots
     } catch (error) {
       logger.error('Error fetching market snapshots:', error)
@@ -182,39 +179,6 @@ class PerennialMarketMaker {
             this.pushSolverBook(marketKey, solverBook);
         }
     }).catch(logger.error)
-
-
-    /*
-    await this.hyperliquid.connect()
-    await this.hyperliquid.subscriptions.subscribeToL2Book(
-      'ETH-PERP',
-      async (data: any) => {
-        const res = await data
-        this.pushBooks([
-          {
-            market: SupportedMarket.cmsqETH,
-            book: this.transformHLBook(
-              res.data,
-              MarketMetadata['eth²'].transform
-            ),
-          },
-        ])
-      }
-    )
-    */
-
-    // Poll for price updates
-    // setInterval(async () => {
-    //   const dydxBook = await fetch(
-    //     `${DyDxUrl}/orderbooks/perpetualMarket/PAXG-USD`
-    //   ).then(res => res.json())
-    //   this.pushBooks([
-    //     {
-    //       market: SupportedMarket.xau,
-    //       book: this.transformDyDxBook(dydxBook),
-    //     },
-    //   ])
-    // }, 5000)
   }
 
   private pushSolverBook(market: SupportedMarket, solverBook: { long: any[], short: any[] }) {
@@ -248,86 +212,6 @@ class PerennialMarketMaker {
     }
   }
 
-  pushBooks(
-    books: {
-      market: SupportedMarket
-      book: {
-        bid: { price: number; amount: number }[]
-        ask: { price: number; amount: number }[]
-      }
-    }[]
-  ) {
-    const payload = {
-      type: 'quote',
-      quoteID: randomUUID(),
-      markets: books.reduce(
-        (acc, { market, book }) => ({
-          ...acc,
-          [`${this.sdkLong.currentChainId}:${
-            ChainMarkets[this.sdkLong.currentChainId]?.[market]
-          }`]: book,
-        }),
-        {} as Record<
-          string,
-          {
-            bid: { price: number; amount: number }[]
-            ask: { price: number; amount: number }[]
-          }
-        >
-      ),
-    }
-    logger.debug(
-      `Pushing ${books.map(b => b.market).join(',')} books: with quoteID ${
-        payload.quoteID
-      }`
-    )
-    this.socket.send(payload)
-  }
-
-  transformHLBook(book: L2Book, transform: (price: bigint) => bigint) {
-    return {
-      bid: book.levels[0].map(level => ({
-        price: Number(
-          Big6Math.mul(
-            transform(Big18Math.fromFloatString(level.px.toString())),
-            SpreadBufferShort
-          )
-        ),
-        amount: Number(Big6Math.fromFloatString(level.sz.toString())),
-      })),
-      ask: book.levels[1].map(level => ({
-        price: Number(
-          Big6Math.mul(
-            transform(Big18Math.fromFloatString(level.px.toString())),
-            SpreadBufferLong
-          )
-        ),
-        amount: Number(Big6Math.fromFloatString(level.sz.toString())),
-      })),
-    }
-  }
-
-  transformDyDxBook(book: {
-    bids: { price: number; size: number }[]
-    asks: { price: number; size: number }[]
-  }) {
-    return {
-      bid: book.bids
-        .map((bid: any) => ({
-          price: Number(
-            Big6Math.mul(Big6Math.fromFloatString(bid.price), SpreadBufferShort)
-          ),
-          amount: Number(Big6Math.fromFloatString(bid.size)),
-        }))
-        .reverse(),
-      ask: book.asks.map((ask: any) => ({
-        price: Number(
-          Big6Math.mul(Big6Math.fromFloatString(ask.price), SpreadBufferLong)
-        ),
-        amount: Number(Big6Math.fromFloatString(ask.size)),
-      })),
-    }
-  }
 
   listen() {
     this.socket.on(WebSocketEvent.PONG, () => {
@@ -361,7 +245,14 @@ class PerennialMarketMaker {
     signature: Hex,
     transactionData: { to: Address; data: Hex; value: string }
   ) {
+    const marketKey = intent.market as SupportedMarket;
     try {
+      if (this.pendingExecutions.has(marketKey)) {
+        throw new Error(`There is already a pending execution for this market ${marketKey}`)
+      }
+
+      this.pendingExecutions.add(marketKey);
+
       const solverExposure = BigInt(intent.amount) * -1n
       const sdkToUse = solverExposure > 0n ? this.sdkLong : this.sdkShort
       if (Big6Math.abs(solverExposure) === Big6Math.fromFloatString('0.123'))
@@ -376,6 +267,27 @@ class PerennialMarketMaker {
       })
 
       logger.info('Sent transaction', tx)
+
+      const marketSnapshots = await sdkToUse.markets.read.marketSnapshots({ markets: [marketKey] })
+      const marketData = marketSnapshots.market[marketKey];
+
+      const marketAddress = marketData?.marketAddress
+      if (!marketAddress) {
+        throw new Error(`Market address is undefined for market ${marketKey}`);
+      }
+
+      const positionSide = intent.amount > 0 ? PositionSide.long : PositionSide.short
+
+      const txAMM = await sdkToUse.markets.write.modifyPosition({
+        marketAddress: marketAddress,
+        address: transactionData.to,
+        positionSide: positionSide,
+        positionAbs: BigInt(0), // Close position by specifying 0
+      });
+
+      logger.info(`Executed AMM order for ${marketKey}, TX: ${txAMM}`);
+
+      await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s for safety
 
       this.socket.send({
         type: 'intent_execution_response',
@@ -393,17 +305,11 @@ class PerennialMarketMaker {
         type: 'intent_execution_response',
         status: 'error',
       })
+    } finally {
+      this.pendingExecutions.delete(marketKey)
     }
   }
 
-  private pythPriceToBig6(price: bigint, expo: number) {
-    const normalizedExpo = price ? 18 + expo : 0
-    const normalizedPrice =
-      normalizedExpo >= 0
-        ? price * 10n ** BigInt(normalizedExpo)
-        : price / 10n ** BigInt(Math.abs(normalizedExpo))
-    return normalizedPrice / 10n ** 12n
-  }
 }
 
 const port = process.env.PORT ? parseInt(process.env.PORT) : 8080

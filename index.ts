@@ -117,7 +117,7 @@ class PerennialMarketMaker {
     };
 
     this.pythDirectClient.getPriceFeed(priceIds, async (data) => {
-        logger.debug(`Pyth price update: ${JSON.stringify(data, null, 2)}`);
+        logger.debug(`Pyth price update: ${JSON.stringify(data)}`);
 
         for (const priceData of data) {
             const { price_id, price: oraclePrice } = priceData;

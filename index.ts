@@ -33,7 +33,7 @@ const SpreadBufferShort = Big6Math.fromFloatString('0.998')
 const logger = new RateLimitedLogger(60000) // Logs at most once every 60 seconds
 
 class PerennialMarketMaker {
-  private pythDirectClient: PythPriceClient
+  private readonly pythDirectClient: PythPriceClient
   private socketConnected = false
   private pendingExecutions: Set<SupportedMarket> = new Set()
 
@@ -84,7 +84,7 @@ class PerennialMarketMaker {
   }
 
   constructor(
-    private readonly socket: ResilientWebSocket,
+    private readonly wsConnection: ResilientWebSocket,
     private readonly pythClient: HermesClient,
     private readonly hyperliquid: Hyperliquid,
     private readonly sdkLong: PerennialSdk,
@@ -206,36 +206,35 @@ class PerennialMarketMaker {
 
     logger.debug(`Pushing solver book for ${market}: quoteID: ${payload.quoteID}. Payload: ${JSON.stringify(payload)}`)
     try {
-        this.socket.send(payload)
+        this.wsConnection.send(payload)
     } catch (error) {
-        logger.error("Failed to send solver book 1:", error)
+        logger.error("Failed to send solver book:", error)
     }
   }
 
-
   listen() {
-    this.socket.on(WebSocketEvent.PONG, () => {
+    this.wsConnection.on(WebSocketEvent.PONG, () => {
       logger.info('Received pong')
     })
 
-    this.socket.on(WebSocketEvent.MESSAGE, data => {
+    this.wsConnection.on(WebSocketEvent.MESSAGE, data => {
       logger.info(`Received message: ${data}`)
       if (data?.type === 'intent_execution_request') {
         this.executeIntent(data.intent, data.signature, data.transaction)
       }
     })
 
-    this.socket.on(WebSocketEvent.CONNECTION, () => {
+    this.wsConnection.on(WebSocketEvent.CONNECTION, () => {
       this.socketConnected = true
       logger.info('WebSocket connection opened')
     })
 
-    this.socket.on(WebSocketEvent.CLOSE, (error) => {
+    this.wsConnection.on(WebSocketEvent.CLOSE, (error) => {
       this.socketConnected = false
       logger.warn(`WebSocket connection closed. Code: ${error}`);
     })
 
-    this.socket.on(WebSocketEvent.ERROR, (error) => {
+    this.wsConnection.on(WebSocketEvent.ERROR, (error) => {
       logger.error("WebSocket connection encountered an error:", error);
     })
   }
@@ -289,7 +288,7 @@ class PerennialMarketMaker {
 
       await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s for safety
 
-      this.socket.send({
+      this.wsConnection.send({
         type: 'intent_execution_response',
         signature: signature,
         transactionHash: tx,
@@ -301,7 +300,7 @@ class PerennialMarketMaker {
         parseViemContractCustomError(e),
         String(e)
       )
-      this.socket.send({
+      this.wsConnection.send({
         type: 'intent_execution_response',
         status: 'error',
       })
@@ -309,7 +308,6 @@ class PerennialMarketMaker {
       this.pendingExecutions.delete(marketKey)
     }
   }
-
 }
 
 const port = process.env.PORT ? parseInt(process.env.PORT) : 8080

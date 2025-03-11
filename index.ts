@@ -246,6 +246,9 @@ class PerennialMarketMaker {
   ) {
     const marketKey = intent.market as SupportedMarket;
     try {
+      if (process.env.NODE_ENV !== 'local') {
+        throw new Error('Execution is disabled in non-local environments')
+      }
       if (this.pendingExecutions.has(marketKey)) {
         throw new Error(`There is already a pending execution for this market ${marketKey}`)
       }

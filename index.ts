@@ -217,11 +217,21 @@ class PerennialMarketMaker {
       logger.info('Received pong')
     })
 
-    this.wsConnection.on(WebSocketEvent.MESSAGE, data => {
-      logger.info(`Received message: ${data}`)
+    this.wsConnection.on(WebSocketEvent.MESSAGE, (data) => {
+      logger.info(`Received message: ${JSON.stringify(data)}`)
+
+      if (data?.type === 'quote_confirmation') {
+        logger.info(`Quote confirmed: quoteID=${data.quoteID}`)
+        return
+      }
+
       if (data?.type === 'intent_execution_request') {
         this.executeIntent(data.intent, data.signature, data.transaction)
       }
+    })
+
+    this.wsConnection.on(WebSocketEvent.CONNECTING, (data) => {
+      logger.error("WebSocket is still connecting:", data)
     })
 
     this.wsConnection.on(WebSocketEvent.CONNECTION, () => {

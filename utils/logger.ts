@@ -41,28 +41,28 @@ export class RateLimitedLogger {
     debug(message: string, ...optionalParams: any[]) {
         const msg = this.buildMsg(message, true);
         if (msg) {
-            logger.debug(msg, ...optionalParams);
+            logger.debug({ ...optionalParams }, msg);
         }
     }
 
     info(message: string, ...optionalParams: any[]) {
         const msg = this.buildMsg(message, false);
         if (msg) {
-            logger.info(msg, ...optionalParams);
+            logger.info({ ...optionalParams }, msg);
         }
     }
 
     warn(message: string, ...optionalParams: any[]) {
         const msg = this.buildMsg(message, false);
         if (msg) {
-            logger.warn(msg, ...optionalParams);
+            logger.warn({ ...optionalParams }, msg);
         }
     }
 
     error(message: string, ...optionalParams: any[]) {
         const msg = this.buildMsg(message, false);
         if (msg) {
-            logger.error(msg, ...optionalParams);
+            logger.error({ error: optionalParams }, msg);
         }
     }    
 }

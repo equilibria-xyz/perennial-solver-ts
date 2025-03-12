@@ -26,7 +26,7 @@ async function run() {
   const originator = zeroAddress // Order originator receives a cut of the subtractive fee
   const solver = zeroAddress // Order Solver API receives a cut of the subtractive fee
 
-  const amount = Big6Math.fromFloatString('-0.001111')
+  const amount = Big6Math.fromFloatString('-786000')
 
   const sdk = new PerennialSdk({
     chainId: arbitrumSepolia.id,
@@ -65,6 +65,7 @@ async function run() {
 
   console.log('Intent signed', intent)
   console.log('Intent signature', signature)
+  console.log('MarketId', marketID)
   const body = JSON.stringify([
     {
       chainID: String(arbitrumSepolia.id),

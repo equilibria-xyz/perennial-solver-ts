@@ -309,7 +309,7 @@ class PerennialMarketMaker {
       })
     } catch (e) {
       logger.error(
-        'Error executing intent',
+        `Error executing intent: ${e}`,
         parseViemContractCustomError(e),
         String(e)
       )

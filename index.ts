@@ -23,6 +23,7 @@ const RpcUrl = Bun.env.RPC_URL!
 const PriceStreamUrl = Bun.env.PYTH_URL!
 const WssUrl = Bun.env.WSS_URL!
 const GraphUrl = Bun.env.GRAPH_URL!
+const StorkUrl = Bun.env.STORK_URL!
 const PrivateKey = Bun.env.PRIVATE_KEY!
 
 const SpreadBufferLong = Big6Math.fromFloatString('1.002')
@@ -53,6 +54,9 @@ class PerennialMarketMaker {
       rpcUrl: RpcUrl,
       pythUrl: PriceStreamUrl,
       graphUrl: GraphUrl,
+      storkConfig: {
+        url: StorkUrl,
+      },
       walletClient: walletClient as any,
     })
 

@@ -1,45 +1,45 @@
 export interface OrderBook {
-    long: { price: number; quantity: number }[];
-    short: { price: number; quantity: number }[];
-  }
+    long: { price: bigint; quantity: bigint }[];
+    short: { price: bigint; quantity: bigint }[];
+}
   
   export function generateSolverBook(
-    oraclePrice: number,
-    skew: number,
-    scale: number,
-    linearFee: number,
-    proportionalFee: number,
-    adiabaticFee: number,
+    oraclePrice: bigint,
+    skew: bigint,
+    scale: bigint,
+    linearFee: bigint,
+    proportionalFee: bigint,
+    adiabaticFee: bigint,
     maxDepth: number
   ): OrderBook {
     const solverBook: OrderBook = { long: [], short: [] };
   
     for (let depth = 1; depth <= maxDepth; depth++) {
-      const orderSkew = depth / scale;
+      const orderSkew = BigInt(depth) * BigInt(10 ** 6) / scale
   
       // Compute long side pricing and quantity
       const longSpread =
         linearFee +
-        proportionalFee * orderSkew +
-        adiabaticFee * (2 * skew + orderSkew);
+        proportionalFee * orderSkew / BigInt(10 ** 6) +
+        adiabaticFee * (BigInt(2) * skew + orderSkew) / BigInt(10 ** 6);
       const longQuantity =
-        (2 * (adiabaticFee * skew + linearFee - longSpread)) /
-        (adiabaticFee + 2 * proportionalFee);
-      const longPrice = oraclePrice + longSpread / depth;
+        (BigInt(2) * (adiabaticFee * skew + linearFee - longSpread)) /
+        (adiabaticFee + BigInt(2) * proportionalFee)
+      const longPrice = oraclePrice + longSpread / BigInt(depth)
   
       // Compute short side pricing and quantity
       const shortSpread =
         linearFee +
-        proportionalFee * orderSkew -
-        adiabaticFee * (2 * skew - orderSkew);
+        proportionalFee * orderSkew / BigInt(10 ** 6) -
+        adiabaticFee * (BigInt(2) * skew - orderSkew) / BigInt(10 ** 6)
       const shortQuantity =
-        (2 * (adiabaticFee * skew - linearFee + shortSpread)) /
-        (adiabaticFee - 2 * proportionalFee);
-      const shortPrice = oraclePrice - shortSpread / depth;
+        (BigInt(2) * (adiabaticFee * skew - linearFee + shortSpread)) /
+        (adiabaticFee - BigInt(2) * proportionalFee)
+      const shortPrice = oraclePrice - shortSpread / BigInt(depth)
   
       // Ensure price and quantity are integers
-      solverBook.long.push({ price: Math.round(longPrice), quantity: Math.abs(Math.round(longQuantity)) });
-      solverBook.short.push({ price: Math.round(shortPrice), quantity: -Math.abs(Math.round(shortQuantity)) });
+      solverBook.long.push({ price: longPrice, quantity: longQuantity > 0 ? longQuantity : -longQuantity })
+      solverBook.short.push({ price: shortPrice, quantity: shortQuantity > 0 ? -shortQuantity : shortQuantity })
     }
   
     return solverBook;

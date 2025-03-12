@@ -154,19 +154,20 @@ class PerennialMarketMaker {
                 continue;
             }
 
-            const skew = Number(marketData.global.exposure);
-            const riskParams = marketData.riskParameter;
-            const scale = Number(riskParams.makerFee.scale);
-            const linearFee = Number(Big6Math.fromFloatString(riskParams.takerFee.linearFee.toString()));
-            const proportionalFee = Number(Big6Math.fromFloatString(riskParams.takerFee.proportionalFee.toString()));
-            const adiabaticFee = Number(Big6Math.fromFloatString(riskParams.takerFee.adiabaticFee.toString()));
+            const skew = BigInt(marketData.global.exposure)
+            const riskParams = marketData.riskParameter
+            const scale = BigInt(riskParams.makerFee.scale)
+            const linearFee = Big6Math.fromFloatString(riskParams.takerFee.linearFee.toString())
+            const proportionalFee = Big6Math.fromFloatString(riskParams.takerFee.proportionalFee.toString())
+            const adiabaticFee = Big6Math.fromFloatString(riskParams.takerFee.adiabaticFee.toString())
+            const oraclePriceScaled = BigInt(Math.round(oraclePrice * 10 ** 6))
             const maxDepth = 10;
 
             logger.debug(`Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`);
             
             // Generate order book
             const solverBook = generateSolverBook(
-                oraclePrice,
+                oraclePriceScaled,
                 skew,
                 scale,
                 linearFee,
@@ -193,12 +194,12 @@ class PerennialMarketMaker {
       markets: {
         [`${this.sdkLong.currentChainId}:${ChainMarkets[this.sdkLong.currentChainId]?.[market]}`]: {
           bid: solverBook.long.map(entry => ({
-            price: entry.price,
-            amount: entry.quantity
+            price: Number(entry.price),
+            amount: Number(entry.quantity)
           })),
           ask: solverBook.short.map(entry => ({
-            price: entry.price,
-            amount: entry.quantity
+            price: Number(entry.price),
+            amount: Number(entry.quantity)
           }))
         }
       }
@@ -208,7 +209,7 @@ class PerennialMarketMaker {
     try {
         this.wsConnection.send(payload)
     } catch (error) {
-        logger.error("Failed to send solver book:", error)
+        logger.error(`Failed to send solver book: ${error}`, error)
     }
   }
 
@@ -221,7 +222,7 @@ class PerennialMarketMaker {
       logger.info(`Received message: ${JSON.stringify(data)}`)
 
       if (data?.type === 'quote_confirmation') {
-        logger.info(`Quote confirmed: quoteID=${data.quoteID}`)
+        logger.debug(`Quote confirmed: quoteID=${data.quoteID}`)
         return
       }
 

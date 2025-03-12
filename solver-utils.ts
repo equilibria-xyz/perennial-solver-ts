@@ -2,6 +2,10 @@ export interface OrderBook {
     long: { price: bigint; quantity: bigint }[];
     short: { price: bigint; quantity: bigint }[];
 }
+
+  function getAbsoluteValue(val: bigint): bigint {
+    return val < 0 ? -val : val
+  }
   
   export function generateSolverBook(
     oraclePrice: bigint,
@@ -38,8 +42,8 @@ export interface OrderBook {
       const shortPrice = oraclePrice - shortSpread / BigInt(depth)
   
       // Ensure price and quantity are integers
-      solverBook.long.push({ price: longPrice, quantity: longQuantity > 0 ? longQuantity : -longQuantity })
-      solverBook.short.push({ price: shortPrice, quantity: shortQuantity > 0 ? -shortQuantity : shortQuantity })
+      solverBook.long.push({ price: getAbsoluteValue(longPrice), quantity: getAbsoluteValue(longQuantity) })
+      solverBook.short.push({ price: getAbsoluteValue(shortPrice), quantity: -getAbsoluteValue(shortQuantity) })
     }
   
     return solverBook;

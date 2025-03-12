@@ -219,13 +219,12 @@ class PerennialMarketMaker {
     })
 
     this.wsConnection.on(WebSocketEvent.MESSAGE, (data) => {
-      logger.info(`Received message: ${JSON.stringify(data)}`)
-
       if (data?.type === 'quote_confirmation') {
         logger.debug(`Quote confirmed: quoteID=${data.quoteID}`)
         return
       }
 
+      logger.info(`Received message: ${JSON.stringify(data)}`)
       if (data?.type === 'intent_execution_request') {
         this.executeIntent(data.intent, data.signature, data.transaction)
       }

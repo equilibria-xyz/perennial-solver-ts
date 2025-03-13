@@ -24,7 +24,7 @@ async function run() {
   const walletClient = createWalletClient({
     account: privateKeyToAccount(process.env.PRIVATE_KEY! as Hex),
     chain: perennialSepolia,
-    transport: http(process.env.RPC_URL_ARBITRUM_SEPOLIA!),
+    transport: http(process.env.RPC_URL!),
   })
 
   const address = walletClient.account.address
@@ -35,8 +35,8 @@ async function run() {
 
   const sdk = new PerennialSdk({
     chainId: perennialSepolia.id,
-    rpcUrl: process.env.RPC_URL_ARBITRUM_SEPOLIA!,
-    graphUrl: process.env.GRAPH_URL_ARBITRUM!,
+    rpcUrl: process.env.RPC_URL!,
+    graphUrl: process.env.GRAPH_URL!,
     pythUrl: process.env.PYTH_URL!,
     cryptexUrl: process.env.CRYPTEX_URL!,
     supportedMarkets: markets,

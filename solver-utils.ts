@@ -15,9 +15,10 @@ export interface OrderBook {
   ): OrderBook {
     const solverBook: OrderBook = { long: [], short: [] };
 
+    const big6Scale = BigInt(10 ** 6)
     for (let depth = 1; depth <= maxDepth; depth++) {
-        const depthBigInt: bigint = BigInt(depth)
-        const twoBigInt: bigint = BigInt(2)
+        const depthBigInt: bigint = BigInt(depth) * big6Scale
+        const twoBigInt: bigint = BigInt(2) * big6Scale
         const orderSkew = Big6Math.div(depthBigInt, scale);
 
         // Compute long side pricing and quantity

@@ -1,11 +1,16 @@
 import { addDays } from 'date-fns'
 import { config as dotenvConfig } from 'dotenv'
-import type { Hex } from 'viem';
+import type { Hex } from 'viem'
 import { createWalletClient, getAddress, http, zeroAddress } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrumSepolia } from 'viem/chains'
 
-import PerennialSdk, {Big6Math, ChainMarkets, SupportedMarket, timeToSeconds } from '@perennial/sdk';
+import PerennialSdk, {
+  Big6Math,
+  ChainMarkets,
+  perennialSepolia,
+  SupportedMarket,
+  timeToSeconds,
+} from '@perennial/sdk'
 
 dotenvConfig({ path: '.env' })
 ;(BigInt.prototype as any).toJSON = function () {
@@ -18,8 +23,8 @@ async function run() {
   const markets = [SupportedMarket.eth]
   const walletClient = createWalletClient({
     account: privateKeyToAccount(process.env.PRIVATE_KEY! as Hex),
-    chain: arbitrumSepolia,
-    transport: http(process.env.RPC_URL_ARBITRUM_SEPOLIA!),
+    chain: perennialSepolia,
+    transport: http(process.env.RPC_URL!),
   })
 
   const address = walletClient.account.address
@@ -29,23 +34,34 @@ async function run() {
   const amount = Big6Math.fromFloatString('-786000')
 
   const sdk = new PerennialSdk({
-    chainId: arbitrumSepolia.id,
-    rpcUrl: process.env.RPC_URL_ARBITRUM_SEPOLIA!,
-    graphUrl: process.env.GRAPH_URL_ARBITRUM!,
+    chainId: perennialSepolia.id,
+    rpcUrl: process.env.RPC_URL!,
+    graphUrl: process.env.GRAPH_URL!,
     pythUrl: process.env.PYTH_URL!,
     cryptexUrl: process.env.CRYPTEX_URL!,
     supportedMarkets: markets,
     walletClient,
   })
 
-  const marketID = `${sdk.currentChainId}:${ChainMarkets[sdk.currentChainId].eth}`
-  const quoteRes = await fetch(`${IntentURLBase}/quotes/market?marketID=${marketID}&amount=${amount}`)
-  if (!quoteRes.ok) throw new Error(`Failed to get quote for ${marketID}: ${quoteRes.statusText}: ${await quoteRes.text()}`)
+  const marketID = `${sdk.currentChainId}:${
+    ChainMarkets[sdk.currentChainId].eth
+  }`
+  const quoteRes = await fetch(
+    `${IntentURLBase}/quotes/market?marketID=${marketID}&amount=${amount}`
+  )
+  if (!quoteRes.ok)
+    throw new Error(
+      `Failed to get quote for ${marketID}: ${
+        quoteRes.statusText
+      }: ${await quoteRes.text()}`
+    )
   const quote = await quoteRes.json()
   console.log('Received quote', quote)
 
   // Buffer amount based on market price to immediately execute
-  const price = BigInt(quote.price) + (amount < 0n ? -1n : 1n) * Big6Math.fromFloatString('10')
+  const price =
+    BigInt(quote.price) +
+    (amount < 0n ? -1n : 1n) * Big6Math.fromFloatString('10')
   const {
     intent: { message: intent },
     signature,
@@ -68,7 +84,7 @@ async function run() {
   console.log('MarketId', marketID)
   const body = JSON.stringify([
     {
-      chainID: String(arbitrumSepolia.id),
+      chainID: String(perennialSepolia.id),
       marketID,
       intent,
       signature,
@@ -81,7 +97,10 @@ async function run() {
     method: 'POST',
     body,
   })
-  if (!res.ok) throw new Error(`Failed to place limit order: ${res.statusText}: ${await res.text()}`)
+  if (!res.ok)
+    throw new Error(
+      `Failed to place limit order: ${res.statusText}: ${await res.text()}`
+    )
 
   const response = await res.json()
   console.log('Limit Order placed', response)

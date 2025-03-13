@@ -1,13 +1,13 @@
 import { arbitrumSepolia } from 'viem/chains'
 import PerennialSdk, {
-  Big18Math,
   Big6Math,
   ChainMarkets,
   HermesClient,
-  Intent,
+  type Intent,
   PositionSide,
   parseViemContractCustomError,
   SupportedMarket,
+  addressToMarket,
 } from '@perennial/sdk'
 import { createWalletClient, http, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -23,9 +23,8 @@ const RpcUrl = Bun.env.RPC_URL!
 const PriceStreamUrl = Bun.env.PYTH_URL!
 const WssUrl = Bun.env.WSS_URL!
 const GraphUrl = Bun.env.GRAPH_URL!
-const PrivateKeyLong = Bun.env.PRIVATE_KEY_LONG!
-const PrivateKeyShort = Bun.env.PRIVATE_KEY_SHORT!
-const DyDxUrl = 'https://indexer.dydx.trade/v4'
+const StorkUrl = Bun.env.STORK_URL!
+const PrivateKey = Bun.env.PRIVATE_KEY!
 
 const SpreadBufferLong = Big6Math.fromFloatString('1.002')
 const SpreadBufferShort = Big6Math.fromFloatString('0.998')
@@ -42,60 +41,46 @@ class PerennialMarketMaker {
       autoJsonify: true,
       autoConnect: true,
       reconnectInterval: 5000, // Reconnect every 5 seconds
-      reconnectOnError: false
+      reconnectOnError: false,
     })
 
-    const walletClientLong = createWalletClient({
-      account: privateKeyToAccount(PrivateKeyLong as Hex),
+    const walletClient = createWalletClient({
+      account: privateKeyToAccount(PrivateKey as Hex),
       chain: arbitrumSepolia,
       transport: http(RpcUrl),
     })
-    const walletClientShort = createWalletClient({
-      account: privateKeyToAccount(PrivateKeyShort as Hex),
-      chain: arbitrumSepolia,
-      transport: http(RpcUrl),
-    })
-    const sdkLong = new PerennialSdk({
+    const sdk = new PerennialSdk({
       chainId: arbitrumSepolia.id,
       rpcUrl: RpcUrl,
       pythUrl: PriceStreamUrl,
       graphUrl: GraphUrl,
-      walletClient: walletClientLong as any,
-    })
-    const sdkShort = new PerennialSdk({
-      chainId: arbitrumSepolia.id,
-      rpcUrl: RpcUrl,
-      pythUrl: PriceStreamUrl,
-      graphUrl: GraphUrl,
-      walletClient: walletClientShort as any,
+      storkConfig: {
+        url: StorkUrl,
+      },
+      walletClient: walletClient as any,
     })
 
-    const pythClient = Array.isArray(sdkLong.oracleClients.pyth)
-      ? sdkLong.oracleClients.pyth[0]
-      : sdkLong.oracleClients.pyth
+    const pythClient = Array.isArray(sdk.oracleClients.pyth)
+      ? sdk.oracleClients.pyth[0]
+      : sdk.oracleClients.pyth
 
-    return new PerennialMarketMaker(
-      socket,
-      pythClient,
-      new Hyperliquid(),
-      sdkLong,
-      sdkShort
-    )
+    return new PerennialMarketMaker(socket, pythClient, new Hyperliquid(), sdk)
   }
 
   constructor(
     private readonly wsConnection: ResilientWebSocket,
     private readonly pythClient: HermesClient,
     private readonly hyperliquid: Hyperliquid,
-    private readonly sdkLong: PerennialSdk,
-    private readonly sdkShort: PerennialSdk
+    private readonly sdk: PerennialSdk
   ) {
     this.pythDirectClient = new PythPriceClient()
   }
 
   private async fetchMarketSnapshots(markets: SupportedMarket[]) {
     try {
-      const snapshots = await this.sdkLong.markets.read.marketSnapshots({ markets })
+      const snapshots = await this.sdk.markets.read.marketSnapshots({
+        markets,
+      })
       return snapshots
     } catch (error) {
       logger.error('Error fetching market snapshots:', error)
@@ -104,87 +89,109 @@ class PerennialMarketMaker {
   }
 
   async run() {
-    this.listen();
+    this.listen()
 
     // Start Pyth direct price feed
     const priceIds = [ETH_USD_PRICE_ID]
 
     const priceIdToMarket: Record<string, SupportedMarket> = {
       [ETH_USD_PRICE_ID]: SupportedMarket.eth,
-    };
+    }
 
-    this.pythDirectClient.getPriceFeed(priceIds, async (data) => {
-        logger.debug(`Pyth price update: ${JSON.stringify(data)}`);
+    this.pythDirectClient
+      .getPriceFeed(priceIds, async data => {
+        logger.debug(`Pyth price update: ${JSON.stringify(data)}`)
 
         for (const priceData of data) {
-            const { price_id, price: oraclePrice } = priceData;
-;
-            const formattedPriceId = `0x${price_id.toLowerCase()}`
-            const marketKey = priceIdToMarket[formattedPriceId];
-            if (!marketKey) {
-              logger.error(`Unknown price_id received: ${price_id}`);
-                continue
-            }
+          const { price_id, price: oraclePrice } = priceData
+          const formattedPriceId = `0x${price_id.toLowerCase()}`
+          const marketKey = priceIdToMarket[formattedPriceId]
+          if (!marketKey) {
+            logger.error(`Unknown price_id received: ${price_id}`)
+            continue
+          }
 
-            const marketAddress = ChainMarkets[this.sdkLong.currentChainId]?.[marketKey];
-            if (!marketAddress) {
-                logger.error(`Market address not found for chain ID ${this.sdkLong.currentChainId} and market ${marketKey}`)
-                continue
-            }
+          const marketAddress =
+            ChainMarkets[this.sdk.currentChainId]?.[marketKey]
+          if (!marketAddress) {
+            logger.error(
+              `Market address not found for chain ID ${this.sdk.currentChainId} and market ${marketKey}`
+            )
+            continue
+          }
 
-            const marketSnapshot = await this.fetchMarketSnapshots([marketKey]);
-            if (!marketSnapshot) {
-                logger.error(`Market snapshot retrieval failed for ${marketKey}`);
-                continue;
-            }
+          const marketSnapshot = await this.fetchMarketSnapshots([marketKey])
+          if (!marketSnapshot) {
+            logger.error(`Market snapshot retrieval failed for ${marketKey}`)
+            continue
+          }
 
-            // Find the correct market key based on the marketAddress
-            const resolvedMarketKey = Object.keys(marketSnapshot.market).find(
-                key => marketSnapshot.market[key as keyof typeof marketSnapshot.market]?.marketAddress?.toLowerCase() === marketAddress.toLowerCase()
-            ) as keyof typeof marketSnapshot.market | undefined;
+          // Find the correct market key based on the marketAddress
+          const resolvedMarketKey = Object.keys(marketSnapshot.market).find(
+            key =>
+              marketSnapshot.market[
+                key as keyof typeof marketSnapshot.market
+              ]?.marketAddress?.toLowerCase() === marketAddress.toLowerCase()
+          ) as keyof typeof marketSnapshot.market | undefined
 
-            if (!resolvedMarketKey) {
-                logger.error(`Market address ${marketAddress} not found in snapshot for ${marketKey}`);
-                continue;
-            }
+          if (!resolvedMarketKey) {
+            logger.error(
+              `Market address ${marketAddress} not found in snapshot for ${marketKey}`
+            )
+            continue
+          }
 
-            const marketData = marketSnapshot.market[resolvedMarketKey];
-            if (!marketData || !marketData.global) {
-                logger.error(`Market data or global exposure is missing for ${marketKey}`);
-                continue;
-            }
+          const marketData = marketSnapshot.market[resolvedMarketKey]
+          if (!marketData || !marketData.global) {
+            logger.error(
+              `Market data or global exposure is missing for ${marketKey}`
+            )
+            continue
+          }
 
-            const skew = BigInt(marketData.global.exposure)
-            const riskParams = marketData.riskParameter
-            const scale = BigInt(riskParams.makerFee.scale)
-            const linearFee = Big6Math.fromFloatString(riskParams.takerFee.linearFee.toString())
-            const proportionalFee = Big6Math.fromFloatString(riskParams.takerFee.proportionalFee.toString())
-            const adiabaticFee = Big6Math.fromFloatString(riskParams.takerFee.adiabaticFee.toString())
-            const oraclePriceScaled = BigInt(Math.round(oraclePrice * 10 ** 6))
-            const maxDepth = 10;
+          const skew = BigInt(marketData.global.exposure)
+          const riskParams = marketData.riskParameter
+          const scale = BigInt(riskParams.makerFee.scale)
+          const linearFee = Big6Math.fromFloatString(
+            riskParams.takerFee.linearFee.toString()
+          )
+          const proportionalFee = Big6Math.fromFloatString(
+            riskParams.takerFee.proportionalFee.toString()
+          )
+          const adiabaticFee = Big6Math.fromFloatString(
+            riskParams.takerFee.adiabaticFee.toString()
+          )
+          const oraclePriceScaled = BigInt(Math.round(oraclePrice * 10 ** 6))
+          const maxDepth = 10
 
-            logger.debug(`Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`);
-            
-            // Generate order book
-            const solverBook = generateSolverBook(
-                oraclePriceScaled,
-                skew,
-                scale,
-                linearFee,
-                proportionalFee,
-                adiabaticFee,
-                maxDepth
-            );
+          logger.debug(
+            `Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`
+          )
 
-            // Push solver book to WebSocket
-            this.pushSolverBook(marketKey, solverBook);
+          // Generate order book
+          const solverBook = generateSolverBook(
+            oraclePriceScaled,
+            skew,
+            scale,
+            linearFee,
+            proportionalFee,
+            adiabaticFee,
+            maxDepth
+          )
+
+          // Push solver book to WebSocket
+          this.pushSolverBook(marketKey, solverBook)
         }
-    }).catch(logger.error)
+      })
+      .catch(logger.error)
   }
 
-  private pushSolverBook(market: SupportedMarket, solverBook: { long: any[], short: any[] }) {
+  private pushSolverBook(
+    market: SupportedMarket,
+    solverBook: { long: any[]; short: any[] }
+  ) {
     if (!this.socketConnected) {
-      logger.error("WebSocket is not connected, skipping message send.")
+      logger.error('WebSocket is not connected, skipping message send.')
       return
     }
 
@@ -192,24 +199,30 @@ class PerennialMarketMaker {
       type: 'quote',
       quoteID: randomUUID(),
       markets: {
-        [`${this.sdkLong.currentChainId}:${ChainMarkets[this.sdkLong.currentChainId]?.[market]}`]: {
+        [`${this.sdk.currentChainId}:${
+          ChainMarkets[this.sdk.currentChainId]?.[market]
+        }`]: {
           bid: solverBook.long.map(entry => ({
             price: Number(entry.price),
-            amount: Number(entry.quantity)
+            amount: Number(entry.quantity),
           })),
           ask: solverBook.short.map(entry => ({
             price: Number(entry.price),
-            amount: Number(entry.quantity)
-          }))
-        }
-      }
+            amount: Number(entry.quantity),
+          })),
+        },
+      },
     }
 
-    logger.debug(`Pushing solver book for ${market}: quoteID: ${payload.quoteID}. Payload: ${JSON.stringify(payload)}`)
+    logger.debug(
+      `Pushing solver book for ${market}: quoteID: ${
+        payload.quoteID
+      }. Payload: ${JSON.stringify(payload)}`
+    )
     try {
-        this.wsConnection.send(payload)
+      this.wsConnection.send(payload)
     } catch (error) {
-        logger.error(`Failed to send solver book: ${error}`, error)
+      logger.error(`Failed to send solver book: ${error}`, error)
     }
   }
 
@@ -218,7 +231,7 @@ class PerennialMarketMaker {
       logger.info('Received pong')
     })
 
-    this.wsConnection.on(WebSocketEvent.MESSAGE, (data) => {
+    this.wsConnection.on(WebSocketEvent.MESSAGE, data => {
       if (data?.type === 'quote_confirmation') {
         logger.debug(`Quote confirmed: quoteID=${data.quoteID}`)
         return
@@ -230,8 +243,8 @@ class PerennialMarketMaker {
       }
     })
 
-    this.wsConnection.on(WebSocketEvent.CONNECTING, (data) => {
-      logger.error("WebSocket is still connecting:", data)
+    this.wsConnection.on(WebSocketEvent.CONNECTING, data => {
+      logger.error('WebSocket is still connecting:', data)
     })
 
     this.wsConnection.on(WebSocketEvent.CONNECTION, () => {
@@ -239,13 +252,13 @@ class PerennialMarketMaker {
       logger.info('WebSocket connection opened')
     })
 
-    this.wsConnection.on(WebSocketEvent.CLOSE, (error) => {
+    this.wsConnection.on(WebSocketEvent.CLOSE, error => {
       this.socketConnected = false
-      logger.warn(`WebSocket connection closed. Code: ${error}`);
+      logger.warn(`WebSocket connection closed. Code: ${error}`)
     })
 
-    this.wsConnection.on(WebSocketEvent.ERROR, (error) => {
-      logger.error("WebSocket connection encountered an error:", error);
+    this.wsConnection.on(WebSocketEvent.ERROR, error => {
+      logger.error('WebSocket connection encountered an error:', error)
     })
   }
 
@@ -254,52 +267,59 @@ class PerennialMarketMaker {
     signature: Hex,
     transactionData: { to: Address; data: Hex; value: string }
   ) {
-    const marketKey = intent.market as SupportedMarket;
+    const marketKey = addressToMarket(
+      this.sdk.currentChainId,
+      intent.common.domain
+    )
     try {
       if (process.env.NODE_ENV !== 'local') {
         throw new Error('Execution is disabled in non-local environments')
       }
       if (this.pendingExecutions.has(marketKey)) {
-        throw new Error(`There is already a pending execution for this market ${marketKey}`)
+        throw new Error(
+          `There is already a pending execution for this market ${marketKey}`
+        )
       }
 
-      this.pendingExecutions.add(marketKey);
+      this.pendingExecutions.add(marketKey)
 
       const solverExposure = BigInt(intent.amount) * -1n
-      const sdkToUse = solverExposure > 0n ? this.sdkLong : this.sdkShort
       if (Big6Math.abs(solverExposure) === Big6Math.fromFloatString('0.123'))
         throw new Error('Force Fail')
 
-      const tx = await sdkToUse.walletClient?.sendTransaction({
+      const tx = await this.sdk.walletClient?.sendTransaction({
         to: transactionData.to,
         data: transactionData.data,
         value: BigInt(transactionData.value),
-        account: sdkToUse.walletClient!.account!,
+        account: this.sdk.walletClient!.account!,
         chain: arbitrumSepolia as any,
       })
 
       logger.info('Sent transaction', tx)
 
-      const marketSnapshots = await sdkToUse.markets.read.marketSnapshots({ markets: [marketKey] })
-      const marketData = marketSnapshots.market[marketKey];
+      const marketSnapshots = await this.sdk.markets.read.marketSnapshots({
+        markets: [marketKey],
+      })
+      const marketData = marketSnapshots.market[marketKey]
 
       const marketAddress = marketData?.marketAddress
       if (!marketAddress) {
-        throw new Error(`Market address is undefined for market ${marketKey}`);
+        throw new Error(`Market address is undefined for market ${marketKey}`)
       }
 
-      const positionSide = intent.amount > 0 ? PositionSide.long : PositionSide.short
+      const positionSide =
+        intent.amount > 0 ? PositionSide.long : PositionSide.short
 
-      const txAMM = await sdkToUse.markets.write.modifyPosition({
+      const txAMM = await this.sdk.markets.write.modifyPosition({
         marketAddress: marketAddress,
         address: transactionData.to,
         positionSide: positionSide,
-        positionAbs: BigInt(0), // Close position by specifying 0
-      });
+        positionAbs: 0n, // Close position by specifying 0
+      })
 
-      logger.info(`Executed AMM order for ${marketKey}, TX: ${txAMM}`);
+      logger.info(`Executed AMM order for ${marketKey}, TX: ${txAMM}`)
 
-      await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s for safety
+      await new Promise(resolve => setTimeout(resolve, 10000)) // Wait 10s for safety
 
       this.wsConnection.send({
         type: 'intent_execution_response',

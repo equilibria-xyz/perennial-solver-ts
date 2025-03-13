@@ -1,4 +1,3 @@
-import { arbitrumSepolia } from 'viem/chains'
 import PerennialSdk, {
   Big6Math,
   ChainMarkets,
@@ -8,6 +7,7 @@ import PerennialSdk, {
   parseViemContractCustomError,
   SupportedMarket,
   addressToMarket,
+  perennialSepolia,
 } from '@perennial/sdk'
 import { createWalletClient, http, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -46,11 +46,11 @@ class PerennialMarketMaker {
 
     const walletClient = createWalletClient({
       account: privateKeyToAccount(PrivateKey as Hex),
-      chain: arbitrumSepolia,
+      chain: perennialSepolia,
       transport: http(RpcUrl),
     })
     const sdk = new PerennialSdk({
-      chainId: arbitrumSepolia.id,
+      chainId: perennialSepolia.id,
       rpcUrl: RpcUrl,
       pythUrl: PriceStreamUrl,
       graphUrl: GraphUrl,
@@ -292,7 +292,7 @@ class PerennialMarketMaker {
         data: transactionData.data,
         value: BigInt(transactionData.value),
         account: this.sdk.walletClient!.account!,
-        chain: arbitrumSepolia as any,
+        chain: perennialSepolia as any,
       })
 
       logger.info('Sent transaction', tx)

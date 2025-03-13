@@ -272,8 +272,8 @@ class PerennialMarketMaker {
       intent.common.domain
     )
     try {
-      if (process.env.NODE_ENV !== 'local') {
-        throw new Error('Execution is disabled in non-local environments')
+      if (process.env.EXECUTION_ENABLED !== 'true') {
+        throw new Error('Execution is disabled!')
       }
       if (this.pendingExecutions.has(marketKey)) {
         throw new Error(

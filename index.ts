@@ -310,16 +310,15 @@ class PerennialMarketMaker {
       const positionSide =
         intent.amount > 0 ? PositionSide.long : PositionSide.short
 
+      await new Promise(resolve => setTimeout(resolve, 10000)) // Wait 10s for safety
+      logger.info(`Closing position via AMM for ${marketKey}`)
       const txAMM = await this.sdk.markets.write.modifyPosition({
         marketAddress: marketAddress,
-        address: transactionData.to,
         positionSide: positionSide,
         positionAbs: 0n, // Close position by specifying 0
       })
 
       logger.info(`Executed AMM order for ${marketKey}, TX: ${txAMM}`)
-
-      await new Promise(resolve => setTimeout(resolve, 10000)) // Wait 10s for safety
 
       this.wsConnection.send({
         type: 'intent_execution_response',

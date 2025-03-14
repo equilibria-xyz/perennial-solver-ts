@@ -69,7 +69,7 @@ class PerennialMarketMaker {
   }
 
   constructor(
-    private readonly wsConnection: ResilientWebSocket,
+    private wsConnection: ResilientWebSocket,
     private readonly pythClient: HermesClient,
     private readonly hyperliquid: Hyperliquid,
     private readonly sdk: PerennialSdk
@@ -187,13 +187,18 @@ class PerennialMarketMaker {
       .catch(logger.error)
   }
 
-  private pushSolverBook(
+  private async pushSolverBook(
     market: SupportedMarket,
     solverBook: { long: any[]; short: any[] }
   ) {
     if (!this.socketConnected) {
-      logger.error('WebSocket is not connected, skipping message send.')
-      return
+      logger.error('WebSocket is not connected, attempting to reconnect...')
+
+      await this.reconnectWebSocket()
+      if (!this.socketConnected) {
+        logger.error('WebSocket still not connected after reconnect attempt, skipping message send.')
+        return
+      }
     }
 
     const payload = {
@@ -224,6 +229,45 @@ class PerennialMarketMaker {
       this.wsConnection.send(payload)
     } catch (error) {
       logger.error(`Failed to send solver book: ${error}`, error)
+    }
+  }
+
+  private async reconnectWebSocket() {
+    if (this.socketConnected) return
+
+    try {
+      logger.info('Manually triggering WebSocket reconnection...')
+
+      // Close existing connection
+      if (this.wsConnection) {
+        try {
+          this.wsConnection.close()
+        } catch (e) {
+          logger.error(`Error while closingWebSocket: ${e}`)
+        }
+      }
+
+      // Recreate the WebSocket connection
+      this.wsConnection = new ResilientWebSocket(WssUrl, {
+        autoJsonify: true,
+        autoConnect: true,
+        reconnectInterval: 5000,
+        reconnectOnError: true,
+      })
+
+      // Re-attach listeners
+      this.listen()
+
+      // Wait a bit for connection to establish
+      await new Promise(resolve => setTimeout(resolve, 5000))
+
+      if (this.socketConnected) {
+        logger.info('WebSocket reconnected successfully.')
+      } else {
+        logger.warn('WebSocket reconnection failed.')
+      }
+    } catch (error) {
+      logger.error('Error while reconnecting WebSocket:', error)
     }
   }
 

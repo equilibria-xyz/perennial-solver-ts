@@ -8,6 +8,7 @@ import PerennialSdk, {
   SupportedMarket,
   addressToMarket,
   perennialSepolia,
+  mergeMultiInvokerTxs,
 } from '@perennial/sdk'
 import { createWalletClient, http, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -295,7 +296,7 @@ class PerennialMarketMaker {
         chain: perennialSepolia as any,
       })
 
-      logger.info('Sent transaction', tx)
+      logger.info(`Sent transaction for intent fill: ${tx}`)
 
       const marketSnapshots = await this.sdk.markets.read.marketSnapshots({
         markets: [marketKey],
@@ -312,13 +313,29 @@ class PerennialMarketMaker {
 
       await new Promise(resolve => setTimeout(resolve, 10000)) // Wait 10s for safety
       logger.info(`Closing position via AMM for ${marketKey}`)
-      const txAMM = await this.sdk.markets.write.modifyPosition({
+
+      const commitment = await this.sdk.oracles.read.oracleCommitmentsLatest({
+        markets: [marketKey],
+      })
+      logger.info(`Latest commitment from Oracle: ${commitment}`)
+      const commitPriceAction = this.sdk.oracles.build.commitPrice({ ...commitment[0], revertOnFailure: false })
+      const modifyAction = await this.sdk.markets.build.modifyPosition({
         marketAddress: marketAddress,
         positionSide: positionSide,
         positionAbs: 0n, // Close position by specifying 0
       })
+      const txAMM = mergeMultiInvokerTxs([commitPriceAction, modifyAction])
 
-      logger.info(`Executed AMM order for ${marketKey}, TX: ${txAMM}`)
+      logger.info(`Sending AMM transaction: ${txAMM}`)
+      await this.sdk.walletClient?.sendTransaction({
+        to: txAMM.to,
+        data: txAMM.data,
+        value: txAMM.value,
+        account: this.sdk.walletClient!.account!,
+        chain: perennialSepolia as any,
+      })
+
+      logger.info(`Executed AMM order for ${marketKey}`)
 
       this.wsConnection.send({
         type: 'intent_execution_response',

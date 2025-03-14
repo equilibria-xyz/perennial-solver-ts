@@ -42,7 +42,7 @@ class PerennialMarketMaker {
       autoJsonify: true,
       autoConnect: true,
       reconnectInterval: 5000, // Reconnect every 5 seconds
-      reconnectOnError: false,
+      reconnectOnError: true,
     })
 
     const walletClient = createWalletClient({

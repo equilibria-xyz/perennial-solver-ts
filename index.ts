@@ -296,7 +296,7 @@ class PerennialMarketMaker {
         chain: perennialSepolia as any,
       })
 
-      logger.info('Sent transaction', tx)
+      logger.info(`Sent transaction for intent fill: ${tx}`)
 
       const marketSnapshots = await this.sdk.markets.read.marketSnapshots({
         markets: [marketKey],
@@ -317,6 +317,7 @@ class PerennialMarketMaker {
       const commitment = await this.sdk.oracles.read.oracleCommitmentsLatest({
         markets: [marketKey],
       })
+      logger.info(`Latest commitment from Oracle: ${commitment}`)
       const commitPriceAction = this.sdk.oracles.build.commitPrice({ ...commitment[0], revertOnFailure: false })
       const modifyAction = await this.sdk.markets.build.modifyPosition({
         marketAddress: marketAddress,
@@ -325,7 +326,16 @@ class PerennialMarketMaker {
       })
       const txAMM = mergeMultiInvokerTxs([commitPriceAction, modifyAction])
 
-      logger.info(`Executed AMM order for ${marketKey}, TX: ${txAMM}`)
+      logger.info(`Sending AMM transaction: ${txAMM}`)
+      await this.sdk.walletClient?.sendTransaction({
+        to: txAMM.to,
+        data: txAMM.data,
+        value: txAMM.value,
+        account: this.sdk.walletClient!.account!,
+        chain: perennialSepolia as any,
+      })
+
+      logger.info(`Executed AMM order for ${marketKey}`)
 
       this.wsConnection.send({
         type: 'intent_execution_response',

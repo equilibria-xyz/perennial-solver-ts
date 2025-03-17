@@ -65,6 +65,15 @@ export interface OrderBook {
       return solverBook
   }
 
+const getPrecision = (price: bigint) => {
+    if (price < 10000) return 1n
+    if (price < 100000) return 10n
+    if (price < 1000000) return 100n
+    if (price < 10000000) return 1000n
+    if (price < 10000000000) return 100000n
+    return 100000n
+}
+
 export const generateSolverBook = ({
     numLevels,
     marketSnapshot,
@@ -94,7 +103,7 @@ export const generateSolverBook = ({
     }
 
     const skew = Big6Math.div(long - short, scale)
-    const tick = Big6Math.fromFloatString("1")
+    const tick = getPrecision(latestPrice)
 
     let totalLongLiquidity = 0n
     let totalShortLiquidity = 0n
@@ -152,7 +161,7 @@ export const generateSolverBook = ({
           totalLongLiquidity >= availableLiquidity.availableLongLiquidity &&
           totalShortLiquidity >= availableLiquidity.availableShortLiquidity
         ) {
-          logger.debug(`Breaking due to liquidity limit: totalLongLiquidity=${totalLongLiquidity}, totalShortLiquidity=${totalShortLiquidity}, availableLiquidity=${availableLiquidity}`)
+          logger.debug(`Breaking due to liquidity limit: totalLongLiquidity=${totalLongLiquidity}, totalShortLiquidity=${totalShortLiquidity}, availableLongLiquidity=${availableLiquidity.availableLongLiquidity}, availableShortLiquidity=${availableLiquidity.availableShortLiquidity}`)
           break
         }
       } catch (error) {

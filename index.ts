@@ -150,35 +150,19 @@ class PerennialMarketMaker {
             continue
           }
 
-          const skew = BigInt(marketData.global.exposure)
-          const riskParams = marketData.riskParameter
-          const scale = BigInt(riskParams.makerFee.scale)
-          const linearFee = Big6Math.fromFloatString(
-            riskParams.takerFee.linearFee.toString()
-          )
-          const proportionalFee = Big6Math.fromFloatString(
-            riskParams.takerFee.proportionalFee.toString()
-          )
-          const adiabaticFee = Big6Math.fromFloatString(
-            riskParams.takerFee.adiabaticFee.toString()
-          )
-          const oraclePriceScaled = BigInt(Math.round(oraclePrice * 10 ** 6))
-          const maxDepth = 10
+          const oraclePriceScaled = Big6Math.fromFloatString(oraclePrice.toString())
 
           logger.debug(
-            `Generating solver book with inputs: oraclePrice: ${oraclePrice} skew: ${skew} scale: ${scale} linearFee: ${linearFee} proportionalFee: ${proportionalFee} adiabaticFee: ${adiabaticFee}`
+            `Generating solver book with inputs: oraclePrice=${oraclePrice}, oraclePriceScaled=${oraclePriceScaled}`
           )
 
           // Generate order book
-          const solverBook = generateSolverBook(
-            oraclePriceScaled,
-            skew,
-            scale,
-            linearFee,
-            proportionalFee,
-            adiabaticFee,
-            maxDepth
-          )
+          const solverBook = generateSolverBook({
+            numLevels: 20,
+            marketSnapshot: marketData,
+            latestPrice: oraclePriceScaled,
+            logger,
+          })
 
           // Push solver book to WebSocket
           this.pushSolverBook(marketKey, solverBook)

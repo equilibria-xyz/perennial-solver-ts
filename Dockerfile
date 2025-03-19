@@ -32,6 +32,13 @@ FROM base AS release
 COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=prerelease /usr/src/app .
 
+# Set environment variables for Datadog
+ENV DD_SERVICE=perennial-solver-ts \
+    DD_ENV=prod \
+    DD_VERSION=1.0.0 \
+    DD_LOGS_INJECTION=true \
+    DD_TRACE_ENABLED=true \
+    DD_RUNTIME_METRICS_ENABLED=true
 # run the app
 RUN chown -R bun:bun .
 USER bun

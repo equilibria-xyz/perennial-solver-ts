@@ -17,6 +17,7 @@ import ResilientWebSocket, { WebSocketEvent } from 'resilient-websocket'
 import { Hyperliquid, type L2Book } from 'hyperliquid'
 import { PythPriceClient } from './pyth-client'
 import { ETH_USD_PRICE_ID } from './constants'
+import { sendDatadogMetric } from './datadog'
 import { generateSolverBook } from './solver-utils'
 import { RateLimitedLogger } from './utils/logger'
 
@@ -126,6 +127,15 @@ class PerennialMarketMaker {
             logger.error(`Market snapshot retrieval failed for ${marketKey}`)
             continue
           }
+
+          const userMarketSnapshot = marketSnapshot?.user?.[marketKey]
+          if (!userMarketSnapshot) {
+            logger.error(`User market snapshot retrieval failed for ${marketKey}`)
+            continue
+          }
+
+          const tags = [`market:${marketKey}`, "source:perennial"]
+          await sendDatadogMetric('solver.collateral', 'gauge', Number(userMarketSnapshot.local.collateral), tags, logger)
 
           // Find the correct market key based on the marketAddress
           const resolvedMarketKey = Object.keys(marketSnapshot.market).find(

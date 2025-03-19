@@ -135,7 +135,7 @@ class PerennialMarketMaker {
           }
 
           const tags = [`market:${marketKey}`, "source:perennial"]
-          const localCollateral = Number(Big6Math.div(userMarketSnapshot.local.collateral, Big6Math.BASE))
+          const localCollateral = Number(Big6Math.div(userMarketSnapshot.local.collateral, 1000000n))
           await sendDatadogMetric('solver.collateral', 'gauge', localCollateral, tags, logger)
 
           // Find the correct market key based on the marketAddress

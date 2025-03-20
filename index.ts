@@ -163,8 +163,11 @@ class PerennialMarketMaker {
 
           const oraclePriceScaled = Big6Math.fromFloatString(oraclePrice.toString())
 
+          const maxLeverage = BigInt(Bun.env.MAX_LEVERAGE ?? '10') // Default: 10x leverage
+          const maxNotional = Big6Math.mul(userMarketSnapshot.local.collateral, maxLeverage)
+
           logger.debug(
-            `Generating solver book with inputs: oraclePrice=${oraclePrice}, oraclePriceScaled=${oraclePriceScaled}`
+            `Generating solver book with inputs: oraclePrice=${oraclePrice}, oraclePriceScaled=${oraclePriceScaled}, maxLeverage=${maxLeverage}, maxNotional=${maxNotional}`
           )
 
           // Generate order book
@@ -172,6 +175,7 @@ class PerennialMarketMaker {
             numLevels: 20,
             marketSnapshot: marketData,
             latestPrice: oraclePriceScaled,
+            maxNotional: maxNotional,
             logger,
           })
 

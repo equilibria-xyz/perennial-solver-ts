@@ -78,12 +78,14 @@ export const generateSolverBook = ({
     numLevels,
     marketSnapshot,
     latestPrice,
+    maxNotional,
     logger,
   }: {
     numLevels: number
     marketSnapshot?: MarketSnapshot
     latestPrice: bigint
     logger: RateLimitedLogger
+    maxNotional: bigint
   }): OrderBook => {
     const solverBook: OrderBook = { long: [], short: [] }
     if (!marketSnapshot) {
@@ -108,6 +110,9 @@ export const generateSolverBook = ({
     let totalLongLiquidity = 0n
     let totalShortLiquidity = 0n
 
+    let totalLongNotional = 0n
+    let totalShortNotional = 0n
+
     for (let i = 0; i < numLevels; i++) {
       try {
         const initialSpreadAsk = linearFee - 2n * Big6Math.mul(adiabaticFee, skew)
@@ -131,6 +136,11 @@ export const generateSolverBook = ({
 
           if (quantity > 0n) {
             totalShortLiquidity += quantity
+            totalShortNotional += quantity * price
+            if (totalShortNotional > maxNotional) {
+                logger.debug(`Breaking due to short side reached notional limit: totalShortNotional=${totalShortNotional}, maxNotional=${maxNotional}`)
+                break
+            }
             solverBook.short.push({
                 price: price,
                 quantity: -quantity
@@ -150,6 +160,11 @@ export const generateSolverBook = ({
           })
           if (quantity > 0n) {
             totalLongLiquidity += quantity
+            totalLongNotional += quantity * price
+            if (totalLongNotional > maxNotional) {
+                logger.debug(`Breaking due to long side reached notional limit: totalLongNotional=${totalLongNotional}, maxNotional=${maxNotional}`)
+                break
+            }
             solverBook.long.push({
                 price: price,
                 quantity: quantity

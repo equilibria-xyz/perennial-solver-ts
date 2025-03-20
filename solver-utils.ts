@@ -136,7 +136,7 @@ export const generateSolverBook = ({
 
           if (quantity > 0n) {
             totalShortLiquidity += quantity
-            totalShortNotional += quantity * price
+            totalShortNotional += Big6Math.mul(quantity, price)
             if (totalShortNotional > maxNotional) {
                 logger.debug(`Breaking due to short side reached notional limit: totalShortNotional=${totalShortNotional}, maxNotional=${maxNotional}`)
                 break
@@ -160,7 +160,7 @@ export const generateSolverBook = ({
           })
           if (quantity > 0n) {
             totalLongLiquidity += quantity
-            totalLongNotional += quantity * price
+            totalLongNotional += Big6Math.mul(quantity, price)
             if (totalLongNotional > maxNotional) {
                 logger.debug(`Breaking due to long side reached notional limit: totalLongNotional=${totalLongNotional}, maxNotional=${maxNotional}`)
                 break

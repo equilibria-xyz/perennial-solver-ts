@@ -163,7 +163,7 @@ class PerennialMarketMaker {
 
           const oraclePriceScaled = Big6Math.fromFloatString(oraclePrice.toString())
 
-          const maxLeverage = BigInt(Bun.env.MAX_LEVERAGE ?? '10') // Default: 10x leverage
+          const maxLeverage = Big6Math.fromFloatString(Bun.env.MAX_LEVERAGE ?? '10') // Default: 10x leverage
           const maxNotional = Big6Math.mul(userMarketSnapshot.local.collateral, maxLeverage)
 
           logger.debug(
